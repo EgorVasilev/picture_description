@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <link rel="stylesheet" href="./index.css">
+    <!-- TODO: inject elm-canvas via npm-package -->
+    <script src="https://unpkg.com/elm-canvas@2.2.4/elm-canvas.js"></script>
+    <script src="index.js"></script>
+</head>
+<body>
+    <div id="elm-app-is-loaded-here"></div>
+    <script>
+        Elm.HomePage.init({
+            node: document.getElementById("elm-app-is-loaded-here")
+        });
+    </script>
+</body>
+</html>
