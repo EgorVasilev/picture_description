@@ -42,6 +42,14 @@ initialModel =
     }
 
 
+defaultCanvasWidth =
+    500
+
+
+defaultCanvasHeight =
+    500
+
+
 type Load a
     = Loading
     | Success a
@@ -121,6 +129,10 @@ drawLine line =
 
 
 view model =
+    let
+        canvasSize =
+            getCanvasSize model
+    in
     div []
         [ h1 [] [ text "Welcome to Dunder Mifflin!" ]
         , button
@@ -140,8 +152,8 @@ view model =
                 )
             ]
         , Canvas.toHtmlWith
-            { width = 500
-            , height = 500
+            { width = canvasSize.width
+            , height = canvasSize.height
             , textures = [ Texture.loadFromImageUrl model.preview TextureLoaded ]
             }
             [ style "touch-action"
@@ -175,8 +187,24 @@ view model =
             ]
         , button [ onClick OnImageRequest ] [ text "Load Image" ]
         , div [] [ text (Debug.toString model.file) ]
-        , img [ src model.preview, width 300, height 300 ] []
         ]
+
+
+getCanvasSize : Model -> { width : Int, height : Int }
+getCanvasSize model =
+    case model.texture of
+        Loading ->
+            { width = defaultCanvasWidth, height = defaultCanvasHeight }
+
+        Failure ->
+            { width = defaultCanvasWidth, height = defaultCanvasHeight }
+
+        Success loadedTexture ->
+            let
+                textureSize =
+                    Texture.dimensions loadedTexture
+            in
+            { width = ceiling textureSize.width, height = ceiling textureSize.height }
 
 
 subscriptions : Model -> Sub Msg
