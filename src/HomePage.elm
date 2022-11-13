@@ -2,7 +2,7 @@ module HomePage exposing (main)
 
 import Browser
 import Browser.Events exposing (onAnimationFrameDelta)
-import Canvas exposing (Renderable, Shape, circle, path, quadraticCurveTo, rect, shapes, texture)
+import Canvas exposing (Point, Renderable, Shape, circle, path, quadraticCurveTo, rect, shapes, texture)
 import Canvas.Settings exposing (..)
 import Canvas.Settings.Line exposing (..)
 import Canvas.Texture as Texture exposing (Texture)
@@ -13,6 +13,8 @@ import File.Select as Select
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
+import Html.Events.Extra.Mouse as Mouse exposing (Event)
+import Html.Events.Extra.Touch as Touch
 import Task
 
 
@@ -22,6 +24,10 @@ type Shapes
     | Round
 
 
+type alias DrawingPointer =
+    { previousMidpoint : Point, lastPoint : Point }
+
+
 type alias Model =
     { activeMode : Shapes
     , toDraw : List Renderable
@@ -29,6 +35,7 @@ type alias Model =
     , file : Maybe File
     , preview : String
     , texture : Load Texture
+    , drawingPointer : Maybe DrawingPointer
     }
 
 
@@ -39,6 +46,7 @@ initialModel =
     , file = Nothing
     , preview = ""
     , texture = Loading
+    , drawingPointer = Nothing
     }
 
 
@@ -57,28 +65,19 @@ type Load a
 
 
 type Msg
-    = SetLineMode
-    | SetRectangleMode
-    | SetRoundMode
-    | AnimationFrame Float
+    = AnimationFrame Float
     | OnImageUpload File
     | OnImageToUrl String
     | OnImageRequest
     | TextureLoaded (Maybe Texture)
+    | StartAt Point
+    | MoveAt Point
+    | EndAt Point
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        SetLineMode ->
-            ( { model | toDraw = [ drawLine [ path ( 200, 100 ) [ quadraticCurveTo ( 250, 150 ) ( 240, 170 ) ] ] ] }, Cmd.none )
-
-        SetRectangleMode ->
-            ( { model | activeMode = Rectangle }, Cmd.none )
-
-        SetRoundMode ->
-            ( { model | toDraw = [ drawCircle [ circle ( 200, 100 ) 100 ] ] }, Cmd.none )
-
         AnimationFrame delta ->
             ( { model | frame = delta + 1 }, Cmd.none )
 
@@ -105,16 +104,58 @@ update msg model =
         TextureLoaded (Just texture) ->
             ( { model | texture = Success texture }, Cmd.none )
 
+        StartAt point ->
+            ( initialPoint point model, Cmd.none )
 
-drawCircle : List Shape -> Renderable
-drawCircle circle =
-    circle
-        |> shapes
-            [ lineCap RoundCap
-            , lineJoin RoundJoin
-            , lineWidth 20
-            , stroke lightBlue
-            ]
+        MoveAt point ->
+            case model.drawingPointer of
+                Just pointer ->
+                    ( drawPoint point pointer model, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        EndAt point ->
+            case model.drawingPointer of
+                Just pointer ->
+                    ( finalPoint point pointer model, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+
+initialPoint point model =
+    { model
+        | drawingPointer = Just { previousMidpoint = point, lastPoint = point }
+    }
+
+
+drawPoint newPoint { previousMidpoint, lastPoint } model =
+    let
+        newMidPoint =
+            controlPoint lastPoint newPoint
+    in
+    { model
+        | drawingPointer = Just { previousMidpoint = newMidPoint, lastPoint = newPoint }
+        , toDraw =
+            List.append
+                [ drawLine
+                    [ path previousMidpoint [ quadraticCurveTo lastPoint newMidPoint ] ]
+                ]
+                model.toDraw
+    }
+
+
+finalPoint point { previousMidpoint, lastPoint } model =
+    { model
+        | drawingPointer = Nothing
+        , toDraw =
+            List.append
+                [ drawLine
+                    [ path previousMidpoint [ quadraticCurveTo lastPoint point ] ]
+                ]
+                model.toDraw
+    }
 
 
 drawLine : List Shape -> Renderable
@@ -123,9 +164,17 @@ drawLine line =
         |> shapes
             [ lineCap RoundCap
             , lineJoin RoundJoin
-            , lineWidth 20
-            , stroke lightBlue
+            , lineWidth (toFloat 2)
+            , stroke Color.orange
             ]
+
+
+
+--calculates "control point" to make a curve between points sequence(more: https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/quadraticCurveTo)
+
+
+controlPoint ( x1, y1 ) ( x2, y2 ) =
+    ( x1 + (x2 - x1) / 2, y1 + (y2 - y1) / 2 )
 
 
 view model =
@@ -135,13 +184,6 @@ view model =
     in
     div []
         [ h1 [] [ text "Welcome to Dunder Mifflin!" ]
-        , button
-            [ classList [ ( "nav-item", True ), ( "active", model.activeMode == Line ) ]
-            , onClick SetLineMode
-            ]
-            [ text "Line" ]
-        , button [ Html.Events.onClick SetRectangleMode ] [ text "Rectangle" ]
-        , button [ onClick SetRoundMode ] [ text "Round" ]
         , button []
             [ text
                 (if model.activeMode == Rectangle then
@@ -161,30 +203,32 @@ view model =
 
             --, onMouseDown StartAt
             --, onMouseUp EndAt
-            , --, Mouse.onDown (.offsetPos >> StartAt)
-              --, Mouse.onMove (.offsetPos >> MoveAt)
-              --, Mouse.onUp (.offsetPos >> EndAt)
-              --
-              ---- These 2 get annoying sometimes when painting
-              ---- , Mouse.onLeave (.offsetPos >> EndAt)
-              ---- , Mouse.onContextMenu (.offsetPos >> EndAt)
-              --, onTouch "touchstart" (touchCoordinates >> StartAt)
-              --, onTouch "touchmove" (touchCoordinates >> MoveAt)
-              --, onTouch "touchend" (touchCoordinates >> EndAt)
-              id
-                "canvas"
+            , Mouse.onDown (.offsetPos >> StartAt)
+            , Mouse.onMove (.offsetPos >> MoveAt)
+            , Mouse.onUp (.offsetPos >> EndAt)
+            , Mouse.onLeave (.offsetPos >> EndAt)
+            , Mouse.onContextMenu (.offsetPos >> EndAt)
+
+            --, onTouch "touchstart" (touchCoordinates >> StartAt)
+            --, onTouch "touchmove" (touchCoordinates >> MoveAt)
+            --, onTouch "touchend"
+            --    (touchCoordinates >> EndAt)
+            , id "canvas"
             , class "canvas"
             ]
-            [ case model.texture of
-                Loading ->
-                    shapes [] [ rect ( 0, 0 ) 10 10 ]
+            (List.append
+                [ case model.texture of
+                    Loading ->
+                        shapes [] [ rect ( 0, 0 ) 10 10 ]
 
-                Failure ->
-                    shapes [] [ rect ( 0, 0 ) 10 10 ]
+                    Failure ->
+                        shapes [] [ rect ( 0, 0 ) 10 10 ]
 
-                Success loadedTexture ->
-                    texture [] ( 0, 0 ) loadedTexture
-            ]
+                    Success loadedTexture ->
+                        texture [] ( 0, 0 ) loadedTexture
+                ]
+                model.toDraw
+            )
         , button [ onClick OnImageRequest ] [ text "Load Image" ]
         , div [] [ text (Debug.toString model.file) ]
         ]
