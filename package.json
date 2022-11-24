@@ -7,11 +7,12 @@
     "compile": "./elm make src/HomePage.elm --output index.js",
     "start": "./elm reactor",
     "startServer": "node ./node_modules/http-server/bin/http-server",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node ./node_modules/elm-test/lib/elm-test.js --compiler ./elm"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "elm-test": "^0.19.1-revision10",
     "http-server": "^0.12.3",
     "json-server": "^0.16.2"
   }
