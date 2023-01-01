@@ -30,6 +30,7 @@ type alias DrawingPointer =
 
 type alias Model =
     { activeMode : Shapes
+    , pendingToDraw : List Renderable
     , toDraw : List Renderable
     , frame : Float
     , file : Maybe File
@@ -41,6 +42,7 @@ type alias Model =
 
 initialModel =
     { activeMode = Line
+    , pendingToDraw = []
     , toDraw = []
     , frame = 0
     , file = Nothing
@@ -79,7 +81,7 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         AnimationFrame delta ->
-            ( { model | frame = delta + 1 }, Cmd.none )
+            ( flushPendingToDraw model, Cmd.none )
 
         OnImageRequest ->
             ( model
@@ -137,24 +139,24 @@ drawPoint newPoint { previousMidpoint, lastPoint } model =
     in
     { model
         | drawingPointer = Just { previousMidpoint = newMidPoint, lastPoint = newPoint }
-        , toDraw =
+        , pendingToDraw =
             List.append
                 [ drawLine
                     [ path previousMidpoint [ quadraticCurveTo lastPoint newMidPoint ] ]
                 ]
-                model.toDraw
+                model.pendingToDraw
     }
 
 
 finalPoint point { previousMidpoint, lastPoint } model =
     { model
         | drawingPointer = Nothing
-        , toDraw =
+        , pendingToDraw =
             List.append
                 [ drawLine
                     [ path previousMidpoint [ quadraticCurveTo lastPoint point ] ]
                 ]
-                model.toDraw
+                model.pendingToDraw
     }
 
 
@@ -177,6 +179,13 @@ controlPoint ( x1, y1 ) ( x2, y2 ) =
     ( x1 + (x2 - x1) / 2, y1 + (y2 - y1) / 2 )
 
 
+flushPendingToDraw ({ pendingToDraw, toDraw } as model) =
+    { model
+        | pendingToDraw = []
+        , toDraw = List.append toDraw pendingToDraw
+    }
+
+
 view model =
     let
         canvasSize =
@@ -184,53 +193,43 @@ view model =
     in
     div []
         [ h1 [] [ text "Welcome to Dunder Mifflin!" ]
-        , button []
-            [ text
-                (if model.activeMode == Rectangle then
-                    "Draw line"
+        , div [ class "canvasContainer" ]
+            [ Canvas.toHtmlWith
+                { width = canvasSize.width
+                , height = canvasSize.height
+                , textures = [ Texture.loadFromImageUrl model.preview TextureLoaded ]
+                }
+                [ style "touch-action"
+                    "none"
+                , Mouse.onDown (.offsetPos >> StartAt)
+                , Mouse.onMove (.offsetPos >> MoveAt)
+                , Mouse.onUp (.offsetPos >> EndAt)
+                , Mouse.onLeave (.offsetPos >> EndAt)
+                , Mouse.onContextMenu (.offsetPos >> EndAt)
 
-                 else
-                    "Test"
-                )
-            ]
-        , Canvas.toHtmlWith
-            { width = canvasSize.width
-            , height = canvasSize.height
-            , textures = [ Texture.loadFromImageUrl model.preview TextureLoaded ]
-            }
-            [ style "touch-action"
-                "none"
-
-            --, onMouseDown StartAt
-            --, onMouseUp EndAt
-            , Mouse.onDown (.offsetPos >> StartAt)
-            , Mouse.onMove (.offsetPos >> MoveAt)
-            , Mouse.onUp (.offsetPos >> EndAt)
-            , Mouse.onLeave (.offsetPos >> EndAt)
-            , Mouse.onContextMenu (.offsetPos >> EndAt)
-
-            --, onTouch "touchstart" (touchCoordinates >> StartAt)
-            --, onTouch "touchmove" (touchCoordinates >> MoveAt)
-            --, onTouch "touchend"
-            --    (touchCoordinates >> EndAt)
-            , id "canvas"
-            , class "canvas"
-            ]
-            (List.append
-                [ case model.texture of
-                    Loading ->
-                        shapes [] [ rect ( 0, 0 ) 10 10 ]
-
-                    Failure ->
-                        shapes [] [ rect ( 0, 0 ) 10 10 ]
-
-                    Success loadedTexture ->
-                        texture [] ( 0, 0 ) loadedTexture
+                --, onTouch "touchstart" (touchCoordinates >> StartAt)
+                --, onTouch "touchmove" (touchCoordinates >> MoveAt)
+                --, onTouch "touchend"
+                --    (touchCoordinates >> EndAt)
+                , id "canvas"
+                , class "canvas"
                 ]
-                model.toDraw
-            )
-        , button [ onClick OnImageRequest ] [ text "Load Image" ]
-        , div [] [ text (Debug.toString model.file) ]
+                (List.append
+                    [ case model.texture of
+                        Loading ->
+                            shapes [] [ rect ( 0, 0 ) 10 10 ]
+
+                        Failure ->
+                            shapes [] [ rect ( 0, 0 ) 10 10 ]
+
+                        Success loadedTexture ->
+                            texture [] ( 0, 0 ) loadedTexture
+                    ]
+                    model.toDraw
+                )
+            , button [ onClick OnImageRequest ] [ text "Load Image" ]
+            , div [] [ text (Debug.toString model.file) ]
+            ]
         ]
 
 
@@ -253,7 +252,15 @@ getCanvasSize model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    onAnimationFrameDelta AnimationFrame
+    if
+        List.length model.pendingToDraw
+            == 0
+    then
+        Sub.none
+
+    else
+        onAnimationFrameDelta
+            AnimationFrame
 
 
 main : Program () Model Msg

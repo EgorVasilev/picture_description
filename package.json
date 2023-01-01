@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "compile": "./elm make src/HomePage.elm --output index.js",
+    "debug": "./elm make src/HomePage.elm --output index.js --debug",
     "start": "./elm reactor",
     "startServer": "node ./node_modules/http-server/bin/http-server",
     "test": "node ./node_modules/elm-test/lib/elm-test.js --compiler ./elm"
